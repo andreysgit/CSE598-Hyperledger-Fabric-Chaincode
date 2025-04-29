@@ -36,9 +36,13 @@ export PATH=${PWD}/../bin:${PWD}:$PATH
 export FABRIC_CFG_PATH=$PWD/../config/
 export CORE_PEER_TLS_ENABLED=true
 
-# Package the smart contract
+# Clean up and Package the smart contract
+log "Cleaning up old chaincode packages..."
+rm -f supplyChain.tar.gz
+
 log "Packaging the smart contract..."
 peer lifecycle chaincode package supplyChain.tar.gz --path "$SMART_CONTRACT_PATH" --lang golang --label supplyChain 2>&1 | tee -a "$LOG_FILE"
+
 
 # Check if the package has been created
 log "Checking if the package has been created..."
@@ -63,14 +67,27 @@ peer lifecycle chaincode install supplyChain.tar.gz 2>&1 | tee -a "$LOG_FILE"
 
 # Approve the chaincode for Org1
 log "Approving the chaincode for Org1..."
-export CORE_PEER_TLS_ENABLED=true
 export CORE_PEER_LOCALMSPID="Org1MSP"
 export CORE_PEER_TLS_ROOTCERT_FILE=${PWD}/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
 export CORE_PEER_MSPCONFIGPATH=${PWD}/organizations/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp
 export CORE_PEER_ADDRESS=localhost:7051
-peer lifecycle chaincode queryinstalled 2>&1 | tee -a "$LOG_FILE"
-read -p "Enter Package ID for Org1: " CC_PACKAGE_ID_ORG1
-peer lifecycle chaincode approveformyorg -o localhost:7050 --ordererTLSHostnameOverride orderer.example.com --channelID mychannel --name supplyChain --version 1.0 --package-id $CC_PACKAGE_ID_ORG1 --sequence 1 --tls true --cafile ${PWD}/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem 2>&1 | tee -a "$LOG_FILE"
+
+CC_PACKAGE_ID_ORG1=$(peer lifecycle chaincode queryinstalled | grep -E "supplyChain:[0-9a-f]+" -o)
+if [ -z "$CC_PACKAGE_ID_ORG1" ]; then
+    echo "Could not find Package ID for Org1!" | tee -a "$LOG_FILE"
+    exit 1
+fi
+echo "Package ID for Org1: $CC_PACKAGE_ID_ORG1" | tee -a "$LOG_FILE"
+
+peer lifecycle chaincode approveformyorg -o localhost:7050 \
+  --ordererTLSHostnameOverride orderer.example.com \
+  --channelID mychannel \
+  --name supplyChain \
+  --version 1.0 \
+  --package-id $CC_PACKAGE_ID_ORG1 \
+  --sequence 1 \
+  --tls true \
+  --cafile ${PWD}/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem 2>&1 | tee -a "$LOG_FILE"
 
 # Approve the chaincode for Org2
 log "Approving the chaincode for Org2..."
@@ -78,9 +95,24 @@ export CORE_PEER_LOCALMSPID="Org2MSP"
 export CORE_PEER_TLS_ROOTCERT_FILE=${PWD}/organizations/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt
 export CORE_PEER_MSPCONFIGPATH=${PWD}/organizations/peerOrganizations/org2.example.com/users/Admin@org2.example.com/msp
 export CORE_PEER_ADDRESS=localhost:9051
-peer lifecycle chaincode queryinstalled 2>&1 | tee -a "$LOG_FILE"
-read -p "Enter Package ID for Org2: " CC_PACKAGE_ID_ORG2
-peer lifecycle chaincode approveformyorg -o localhost:7050 --ordererTLSHostnameOverride orderer.example.com --channelID mychannel --name supplyChain --version 1.0 --package-id $CC_PACKAGE_ID_ORG2 --sequence 1 --tls true --cafile ${PWD}/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem 2>&1 | tee -a "$LOG_FILE"
+
+CC_PACKAGE_ID_ORG2=$(peer lifecycle chaincode queryinstalled | grep -E "supplyChain:[0-9a-f]+" -o)
+if [ -z "$CC_PACKAGE_ID_ORG2" ]; then
+    echo "Could not find Package ID for Org2!" | tee -a "$LOG_FILE"
+    exit 1
+fi
+echo "Package ID for Org2: $CC_PACKAGE_ID_ORG2" | tee -a "$LOG_FILE"
+
+peer lifecycle chaincode approveformyorg -o localhost:7050 \
+  --ordererTLSHostnameOverride orderer.example.com \
+  --channelID mychannel \
+  --name supplyChain \
+  --version 1.0 \
+  --package-id $CC_PACKAGE_ID_ORG2 \
+  --sequence 1 \
+  --tls true \
+  --cafile ${PWD}/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem 2>&1 | tee -a "$LOG_FILE"
+
 
 # Check if the chaincode is ready to be committed
 log "Checking if the chaincode is ready to be committed..."
@@ -101,3 +133,4 @@ peer chaincode invoke -o localhost:7050 --ordererTLSHostnameOverride orderer.exa
 # Get All Products from the Ledger
 log "Calling the GetAllProducts function..."
 peer chaincode query -C mychannel -n supplyChain -c '{"Args":["GetAllProducts"]}' 2>&1 | tee -a "$LOG_FILE"
+

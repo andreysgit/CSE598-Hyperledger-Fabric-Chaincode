@@ -3,19 +3,21 @@ package main // Package main, Do not change this line.
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	"time"
+
+	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 )
 
 // Product represents the structure for a product entity
 type Product struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Status    string `json:"status"`
-	Owner     string `json:"owner"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
-	Category  string `json:"category"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Status      string `json:"status"`
+	Owner       string `json:"owner"`
+	Description string `json:"description"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+	Category    string `json:"category"`
 }
 
 // SupplyChainContract defines the smart contract structure
@@ -41,8 +43,26 @@ func (s *SupplyChainContract) InitLedger(ctx contractapi.TransactionContextInter
 
 	// Initial set of products to populate the ledger
 	products := []Product{
-		{ID: "p1", Name: "Laptop", Status: "Manufactured", Owner: "CompanyA", CreatedAt: timestamp, UpdatedAt: timestamp, Description: "High-end gaming laptop", Category: "Electronics"},
-	}
+		{
+			ID:          "p1",
+			Name:        "Laptop",
+			Status:      "Manufactured",
+			Owner:       "CompanyA",
+			CreatedAt:   timestamp,
+			UpdatedAt:   timestamp,
+			Description: "High-end gaming laptop",
+			Category:    "Electronics",
+		},
+		{
+			ID:          "p2",
+			Name:        "Smartphone",
+			Status:      "Manufactured",
+			Owner:       "CompanyB",
+			CreatedAt:   timestamp,
+			UpdatedAt:   timestamp,
+			Description: "Latest model smartphone",
+			Category:    "Electronics",
+		}}
 
 	for _, product := range products {
 		if err := s.putProduct(ctx, &product); err != nil {
@@ -55,31 +75,146 @@ func (s *SupplyChainContract) InitLedger(ctx contractapi.TransactionContextInter
 
 // CreateProduct creates a new product in the ledger
 func (s *SupplyChainContract) CreateProduct(ctx contractapi.TransactionContextInterface, id, name, owner, description, category string) error {
-	// Write your implementation here
+
+	// Check if product already exists
+
+	exists, err := s.ProductExists(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to check if product exists: %v", err)
+	}
+	if exists {
+		return fmt.Errorf("cannot create product: ID %s already in use", id)
+	}
+
+	// Get current timestamp
+
+	timestamp, err := s.getTimestamp(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get timestamp: %v", err)
+	}
+
+	// Create product
+	product := Product{
+		ID:          id,
+		Name:        name,
+		Status:      "Manufactured",
+		Owner:       owner,
+		CreatedAt:   timestamp,
+		UpdatedAt:   timestamp,
+		Description: description,
+		Category:    category,
+	}
+
+	// Store product on the ledger
+	if err := s.putProduct(ctx, &product); err != nil {
+		return fmt.Errorf("failed to put product on ledger: %v", err)
+	}
+
+	return nil
 }
 
 // UpdateProduct allows updating a product's status, owner, description, and category
 func (s *SupplyChainContract) UpdateProduct(ctx contractapi.TransactionContextInterface, id string, newStatus string, newOwner string, newDescription string, newCategory string) error {
-	// Write your implementation here
+
+	// Fetch the current state of the product from the ledger
+	productJSON, err := ctx.GetStub().GetState(id)
+	if err != nil {
+		return fmt.Errorf("failed to read from world state: %v", err)
+	}
+	if productJSON == nil {
+		return fmt.Errorf("product %s does not exist", id)
+	}
+
+	// Unmarshal product
+	var product Product
+	if err := json.Unmarshal(productJSON, &product); err != nil {
+		return fmt.Errorf("failed to unmarshal product JSON: %v", err)
+	}
+
+	// Get new timestamp
+	timestamp, err := s.getTimestamp(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get timestamp: %v", err)
+	}
+
+	// Update product fields
+	product.Status = newStatus
+	product.Description = newDescription
+	product.Category = newCategory
+	product.UpdatedAt = timestamp
+
+	// Save to ledger
+	if err := s.putProduct(ctx, &product); err != nil {
+		return fmt.Errorf("failed to update product: %v", err)
+	}
+
+	return nil
+
 }
 
 // TransferOwnership changes the owner of a product
 func (s *SupplyChainContract) TransferOwnership(ctx contractapi.TransactionContextInterface, id, newOwner string) error {
-	// Write your implementation here
+	// Retrieve product from ledger
+	productJSON, err := ctx.GetStub().GetState(id)
+	if err != nil {
+		return fmt.Errorf("failed to read from world state: %v", err)
+	}
+	if productJSON == nil {
+		return fmt.Errorf("product %s does not exist", id)
+	}
+
+	// Unmarshal product
+	var product Product
+	if err := json.Unmarshal(productJSON, &product); err != nil {
+		return fmt.Errorf("failed to unmarshal product JSON: %v", err)
+	}
+
+	// Get new timestamp
+	timestamp, err := s.getTimestamp(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get timestamp: %v", err)
+	}
+
+	// Update the owner and timestamp
+	product.Owner = newOwner
+	product.UpdatedAt = timestamp
+
+	// Save updated product back to ledger
+	if err := s.putProduct(ctx, &product); err != nil {
+		return fmt.Errorf("failed to transfer ownership: %v", err)
+	}
+
+	return nil
+
 }
 
 // QueryProduct retrieves a single product from the ledger by ID
 func (s *SupplyChainContract) QueryProduct(ctx contractapi.TransactionContextInterface, id string) (*Product, error) {
-	// Write your implementation here
+	// Retrieve product from the ledger
+	productJSON, err := ctx.GetStub().GetState(id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read from world state: %v", err)
+	}
+	if productJSON == nil {
+		return nil, fmt.Errorf("product with ID %s does not exist", id)
+	}
+
+	// Unmarshal product JSON into Product struct
+	var product Product
+	if err := json.Unmarshal(productJSON, &product); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal product JSON: %v", err)
+	}
+
+	return &product, nil
 }
 
 // putProduct is a helper method for inserting or updating a product in the ledger
 func (s *SupplyChainContract) putProduct(ctx contractapi.TransactionContextInterface, product *Product) error {
 	productJSON, err := json.Marshal(product)
-	if err != nil {
-		return err
+	if err == nil {
+		return ctx.GetStub().PutState(product.ID, productJSON)
 	}
-	return ctx.GetStub().PutState(product.ID, productJSON)
+	return fmt.Errorf("failed to marshal product: %v", err)
 }
 
 // ProductExists is a helper method to check if a product exists in the ledger

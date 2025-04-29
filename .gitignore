@@ -41,3 +41,6 @@ _test
 # JetBrains IDEs
 *.iml
 .idea/
+
+scratch
+deployment_log.txt
